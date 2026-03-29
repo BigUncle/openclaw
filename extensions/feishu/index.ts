@@ -1,4 +1,5 @@
 import { defineChannelPluginEntry } from "openclaw/plugin-sdk/core";
+import type { PluginRuntime } from "openclaw/plugin-sdk/core";
 import { registerFeishuBitableTools } from "./src/bitable.js";
 import { feishuPlugin } from "./src/channel.js";
 import { registerFeishuChatTools } from "./src/chat.js";
@@ -49,6 +50,18 @@ type MonitorFeishuProvider = typeof import("./src/monitor.js").monitorFeishuProv
 
 let feishuMonitorPromise: Promise<typeof import("./src/monitor.js")> | null = null;
 
+const FEISHU_FULL_REGISTRATION_RUNTIMES = Symbol.for("openclaw.feishu.full-registration-runtimes");
+
+function getFeishuFullRegistrationRuntimes(): WeakSet<PluginRuntime> {
+  const existing = (globalThis as Record<PropertyKey, unknown>)[FEISHU_FULL_REGISTRATION_RUNTIMES];
+  if (existing instanceof WeakSet) {
+    return existing as WeakSet<PluginRuntime>;
+  }
+  const seen = new WeakSet<PluginRuntime>();
+  (globalThis as Record<PropertyKey, unknown>)[FEISHU_FULL_REGISTRATION_RUNTIMES] = seen;
+  return seen;
+}
+
 function loadFeishuMonitorModule() {
   feishuMonitorPromise ??= import("./src/monitor.js");
   return feishuMonitorPromise;
@@ -68,6 +81,12 @@ export default defineChannelPluginEntry({
   plugin: feishuPlugin,
   setRuntime: setFeishuRuntime,
   registerFull(api) {
+    const seen = getFeishuFullRegistrationRuntimes();
+    if (seen.has(api.runtime)) {
+      return;
+    }
+    seen.add(api.runtime);
+
     registerFeishuSubagentHooks(api);
     registerFeishuDocTools(api);
     registerFeishuChatTools(api);
