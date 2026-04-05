@@ -34,6 +34,8 @@ import { transformTransportMessages } from "./transport-message-transform.js";
 import { mergeTransportMetadata, sanitizeTransportPayloadText } from "./transport-stream-shared.js";
 
 const DEFAULT_AZURE_OPENAI_API_VERSION = "2024-12-01-preview";
+const OPENCLAW_DEBUG_REASONING_STREAM =
+  typeof process !== "undefined" && process.env.OPENCLAW_DEBUG_REASONING_STREAM === "1";
 
 type BaseStreamOptions = {
   temperature?: number;
@@ -1073,6 +1075,11 @@ async function processOpenAICompletionsStream(
         stream.push({ type: "text_start", contentIndex: blockIndex(), partial: output });
       }
       currentBlock.text += choice.delta.content;
+      if (OPENCLAW_DEBUG_REASONING_STREAM) {
+        console.warn(
+          `[openclaw-debug] openai-transport text_delta model=${model.provider}/${model.id} api=${model.api} len=${choice.delta.content.length}`,
+        );
+      }
       stream.push({
         type: "text_delta",
         contentIndex: blockIndex(),
@@ -1093,11 +1100,17 @@ async function processOpenAICompletionsStream(
         output.content.push(currentBlock);
         stream.push({ type: "thinking_start", contentIndex: blockIndex(), partial: output });
       }
-      currentBlock.thinking += String((choice.delta as Record<string, unknown>)[reasoningField]);
+      const reasoningDelta = String((choice.delta as Record<string, unknown>)[reasoningField]);
+      currentBlock.thinking += reasoningDelta;
+      if (OPENCLAW_DEBUG_REASONING_STREAM) {
+        console.warn(
+          `[openclaw-debug] openai-transport thinking_delta model=${model.provider}/${model.id} api=${model.api} len=${reasoningDelta.length} field=${reasoningField}`,
+        );
+      }
       stream.push({
         type: "thinking_delta",
         contentIndex: blockIndex(),
-        delta: String((choice.delta as Record<string, unknown>)[reasoningField]),
+        delta: reasoningDelta,
         partial: output,
       });
       continue;

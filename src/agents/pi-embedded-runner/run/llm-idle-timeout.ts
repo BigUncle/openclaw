@@ -2,6 +2,9 @@ import type { StreamFn } from "@mariozechner/pi-agent-core";
 import { streamSimple } from "@mariozechner/pi-ai";
 import type { OpenClawConfig } from "../../../config/config.js";
 
+const OPENCLAW_DEBUG_REASONING_STREAM =
+  typeof process !== "undefined" && process.env.OPENCLAW_DEBUG_REASONING_STREAM === "1";
+
 /**
  * Default idle timeout for LLM streaming responses in milliseconds.
  * If no token is received within this time, the request is aborted.
@@ -55,12 +58,19 @@ export function streamWithIdleTimeout(
         function () {
           const iterator = originalAsyncIterator();
           let idleTimer: NodeJS.Timeout | null = null;
+          let lastEventType = "none";
+          let lastEventAt = Date.now();
 
           const createTimeoutPromise = (): Promise<never> => {
             return new Promise((_, reject) => {
               idleTimer = setTimeout(() => {
+                const idleForMs = Date.now() - lastEventAt;
+                const detail =
+                  OPENCLAW_DEBUG_REASONING_STREAM && lastEventType
+                    ? ` lastEventType=${lastEventType} idleForMs=${idleForMs}`
+                    : "";
                 const error = new Error(
-                  `LLM idle timeout (${Math.floor(timeoutMs / 1000)}s): no response from model`,
+                  `LLM idle timeout (${Math.floor(timeoutMs / 1000)}s): no response from model${detail}`,
                 );
                 onIdleTimeout?.(error);
                 reject(error);
@@ -84,8 +94,16 @@ export function streamWithIdleTimeout(
                 const result = await Promise.race([iterator.next(), createTimeoutPromise()]);
 
                 if (result.done) {
+                  lastEventType = "done";
+                  lastEventAt = Date.now();
                   clearTimer();
                   return result;
+                }
+
+                if (OPENCLAW_DEBUG_REASONING_STREAM) {
+                  const value = result.value as { type?: unknown } | undefined;
+                  lastEventType = typeof value?.type === "string" ? value.type : "unknown";
+                  lastEventAt = Date.now();
                 }
 
                 clearTimer();

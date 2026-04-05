@@ -1,5 +1,5 @@
 import type { Model } from "@mariozechner/pi-ai";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   buildOpenAIResponsesParams,
   buildOpenAICompletionsParams,
@@ -1249,5 +1249,76 @@ describe("openai transport stream", () => {
     expect(params).not.toHaveProperty("max_completion_tokens");
     expect(params).not.toHaveProperty("store");
     expect(params).not.toHaveProperty("reasoning_effort");
+  });
+});
+
+
+describe("openai completions reasoning-first stream", () => {
+  it("emits thinking deltas before text deltas for reasoning-first chunks", async () => {
+    const mod = await import("./openai-transport-stream.js");
+    const streamFn = mod.createOpenAICompletionsTransportStreamFn();
+
+    const chunks = [
+      { id: "c1", choices: [{ index: 0, delta: { role: "assistant", content: "", reasoning: "The" }, finish_reason: null }] },
+      { id: "c1", choices: [{ index: 0, delta: { content: "", reasoning: " user" }, finish_reason: null }] },
+      { id: "c1", choices: [{ index: 0, delta: { content: "final" }, finish_reason: null }] },
+      { id: "c1", choices: [{ index: 0, delta: { content: " answer" }, finish_reason: null }] },
+      { id: "c1", choices: [{ index: 0, delta: {}, finish_reason: "stop" }] },
+    ];
+
+    const createMock = vi.fn(async () => ({
+      async *[Symbol.asyncIterator]() {
+        for (const chunk of chunks) {
+          yield chunk as never;
+        }
+      },
+    }));
+
+    const OpenAIAny = (await import("openai")).default as unknown as { prototype: Record<string, unknown> };
+    const originalChat = OpenAIAny.prototype.chat;
+    Object.defineProperty(OpenAIAny.prototype, "chat", {
+      configurable: true,
+      get() {
+        return { completions: { create: createMock } };
+      },
+    });
+
+    try {
+      const model = {
+        id: "gemma4:26b",
+        name: "gemma4:26b",
+        api: "openclaw-openai-completions-transport",
+        provider: "ollama-cyhome-v1",
+        baseUrl: "http://127.0.0.1:11434/v1",
+        reasoning: true,
+        input: ["text"],
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+        contextWindow: 262144,
+        maxTokens: 8192,
+      } as never;
+
+      const context = {
+        systemPrompt: "test",
+        messages: [{ role: "user", content: [{ type: "text", text: "hello" }], timestamp: Date.now() }],
+        tools: [],
+      } as never;
+
+      const stream = await streamFn(model, context, { apiKey: "ollama" } as never);
+      const types: string[] = [];
+      for await (const event of stream as AsyncIterable<{ type: string }>) {
+        types.push(event.type);
+      }
+      expect(types).toContain("thinking_start");
+      expect(types).toContain("thinking_delta");
+      expect(types).toContain("text_start");
+      expect(types).toContain("text_delta");
+      expect(types.indexOf("thinking_delta")).toBeLessThan(types.indexOf("text_delta"));
+    } finally {
+      if (originalChat === undefined) {
+        delete OpenAIAny.prototype.chat;
+      } else {
+        Object.defineProperty(OpenAIAny.prototype, "chat", { configurable: true, value: originalChat, writable: true });
+      }
+    }
   });
 });

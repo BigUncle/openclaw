@@ -6,6 +6,9 @@ import { createBoundaryAwareStreamFnForModel } from "../provider-transport-strea
 import { stripSystemPromptCacheBoundary } from "../system-prompt-cache-boundary.js";
 import type { EmbeddedRunAttemptParams } from "./run/types.js";
 
+const OPENCLAW_DEBUG_REASONING_STREAM =
+  typeof process !== "undefined" && process.env.OPENCLAW_DEBUG_REASONING_STREAM === "1";
+
 let embeddedAgentBaseStreamFnCache = new WeakMap<object, StreamFn | undefined>();
 
 export function resolveEmbeddedAgentBaseStreamFn(params: {
@@ -72,6 +75,11 @@ export function resolveEmbeddedAgentStreamFn(params: {
   authStorage?: { getApiKey(provider: string): Promise<string | undefined> };
 }): StreamFn {
   if (params.providerStreamFn) {
+    if (OPENCLAW_DEBUG_REASONING_STREAM) {
+      console.warn(
+        `[openclaw-debug] stream-resolution providerStreamFn model=${params.model.provider}/${params.model.id} api=${params.model.api}`,
+      );
+    }
     const inner = params.providerStreamFn;
     const normalizeContext = (context: Parameters<StreamFn>[1]) =>
       context.systemPrompt
@@ -102,6 +110,11 @@ export function resolveEmbeddedAgentStreamFn(params: {
 
   const currentStreamFn = params.currentStreamFn ?? streamSimple;
   if (params.shouldUseWebSocketTransport) {
+    if (OPENCLAW_DEBUG_REASONING_STREAM) {
+      console.warn(
+        `[openclaw-debug] stream-resolution websocket model=${params.model.provider}/${params.model.id} api=${params.model.api} hasKey=${params.wsApiKey ? "1" : "0"}`,
+      );
+    }
     return params.wsApiKey
       ? createOpenAIWebSocketStreamFn(params.wsApiKey, params.sessionId, {
           signal: params.signal,
@@ -110,15 +123,30 @@ export function resolveEmbeddedAgentStreamFn(params: {
   }
 
   if (params.model.provider === "anthropic-vertex") {
+    if (OPENCLAW_DEBUG_REASONING_STREAM) {
+      console.warn(
+        `[openclaw-debug] stream-resolution anthropic-vertex model=${params.model.provider}/${params.model.id} api=${params.model.api}`,
+      );
+    }
     return createAnthropicVertexStreamFnForModel(params.model);
   }
 
   if (params.currentStreamFn === undefined || params.currentStreamFn === streamSimple) {
     const boundaryAwareStreamFn = createBoundaryAwareStreamFnForModel(params.model);
     if (boundaryAwareStreamFn) {
+      if (OPENCLAW_DEBUG_REASONING_STREAM) {
+        console.warn(
+          `[openclaw-debug] stream-resolution boundary-aware model=${params.model.provider}/${params.model.id} api=${params.model.api}`,
+        );
+      }
       return boundaryAwareStreamFn;
     }
   }
 
+  if (OPENCLAW_DEBUG_REASONING_STREAM) {
+    console.warn(
+      `[openclaw-debug] stream-resolution currentStreamFn model=${params.model.provider}/${params.model.id} api=${params.model.api}`,
+    );
+  }
   return currentStreamFn;
 }
