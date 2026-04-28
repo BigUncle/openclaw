@@ -155,9 +155,9 @@ Use this when an upstream LLM provider returns:
 Do not assume this is always an OpenClaw configuration issue. This can also come from an upstream security layer such as Cloudflare, WAF/Bot Management, or reverse-proxy filtering.
 
 ```bash
-openclaw logs --follow
 openclaw status
 openclaw gateway status
+openclaw logs --follow
 ```
 
 Look for:
@@ -174,9 +174,15 @@ Fix approach:
 3. If filtering is confirmed, prefer a narrowly scoped allow/skip/exception rule for the required API path.
 4. Avoid disabling protection for the entire site.
 
-Important:
+<Warning>
+A successful minimal `curl` does not guarantee that real SDK-style requests will pass.
+</Warning>
 
-> A successful minimal `curl` does not guarantee that real SDK-style requests will pass.
+Related:
+
+- [OpenAI-compatible endpoints](/gateway/configuration-reference#openai-compatible-endpoints)
+- [Provider configuration](/providers)
+- [Logs](/reference/logs)
 
 ## No replies
 
